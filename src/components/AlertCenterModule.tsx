@@ -1137,53 +1137,109 @@ export const AlertCenterModule: React.FC<Props> = ({ selectedField, language, on
                       : "Configure Twilio or Green API credentials to enable automated server-side background message delivery:"}
                   </p>
 
-                  <div className="space-y-1.5">
-                    <label className="font-bold text-slate-700 dark:text-slate-300 text-[10px]">
-                      Twilio Account SID:
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                      value={configInputs.twilioSid}
-                      onChange={(e) => setConfigInputs({ ...configInputs, twilioSid: e.target.value })}
-                      className="w-full bg-white dark:bg-slate-950 px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 font-mono text-[10px]"
-                    />
+                  {/* Green API Inputs */}
+                  <div className="p-2 bg-emerald-50/50 dark:bg-emerald-950/20 rounded-lg border border-emerald-200 dark:border-emerald-800/40 space-y-2">
+                    <div className="text-[10px] font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-1">
+                      <span>🟢 Option 1: Green API (Direct WhatsApp)</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <label className="font-bold text-slate-700 dark:text-slate-300 text-[9px]">
+                          Instance ID:
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. 1101xxxxxx"
+                          value={configInputs.greenApiId}
+                          onChange={(e) => setConfigInputs({ ...configInputs, greenApiId: e.target.value })}
+                          className="w-full bg-white dark:bg-slate-950 px-2 py-1 rounded border border-slate-300 dark:border-slate-700 font-mono text-[10px]"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="font-bold text-slate-700 dark:text-slate-300 text-[9px]">
+                          API Token:
+                        </label>
+                        <input
+                          type="password"
+                          placeholder="token..."
+                          value={configInputs.greenApiToken}
+                          onChange={(e) => setConfigInputs({ ...configInputs, greenApiToken: e.target.value })}
+                          className="w-full bg-white dark:bg-slate-950 px-2 py-1 rounded border border-slate-300 dark:border-slate-700 font-mono text-[10px]"
+                        />
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label className="font-bold text-slate-700 dark:text-slate-300 text-[10px]">
-                      Twilio Auth Token:
-                    </label>
-                    <input
-                      type="password"
-                      placeholder="••••••••••••••••••••••••••••••••"
-                      value={configInputs.twilioToken}
-                      onChange={(e) => setConfigInputs({ ...configInputs, twilioToken: e.target.value })}
-                      className="w-full bg-white dark:bg-slate-950 px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 font-mono text-[10px]"
-                    />
+                  {/* Twilio Inputs */}
+                  <div className="p-2 bg-slate-50 dark:bg-slate-900/40 rounded-lg border border-slate-200 dark:border-slate-800 space-y-2">
+                    <div className="text-[10px] font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1">
+                      <span>🔵 Option 2: Twilio WhatsApp</span>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="font-bold text-slate-700 dark:text-slate-300 text-[9px]">
+                        Twilio Account SID:
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                        value={configInputs.twilioSid}
+                        onChange={(e) => setConfigInputs({ ...configInputs, twilioSid: e.target.value })}
+                        className="w-full bg-white dark:bg-slate-950 px-2.5 py-1.5 rounded border border-slate-300 dark:border-slate-700 font-mono text-[10px]"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="font-bold text-slate-700 dark:text-slate-300 text-[9px]">
+                        Twilio Auth Token:
+                      </label>
+                      <input
+                        type="password"
+                        placeholder="••••••••••••••••••••••••••••••••"
+                        value={configInputs.twilioToken}
+                        onChange={(e) => setConfigInputs({ ...configInputs, twilioToken: e.target.value })}
+                        className="w-full bg-white dark:bg-slate-950 px-2.5 py-1.5 rounded border border-slate-300 dark:border-slate-700 font-mono text-[10px]"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="font-bold text-slate-700 dark:text-slate-300 text-[9px]">
+                        Twilio WhatsApp Sender:
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="+14155238886"
+                        value={configInputs.twilioFrom}
+                        onChange={(e) => setConfigInputs({ ...configInputs, twilioFrom: e.target.value })}
+                        className="w-full bg-white dark:bg-slate-950 px-2.5 py-1.5 rounded border border-slate-300 dark:border-slate-700 font-mono text-[10px]"
+                      />
+                    </div>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label className="font-bold text-slate-700 dark:text-slate-300 text-[10px]">
-                      Twilio WhatsApp Sender:
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="+14155238886"
-                      value={configInputs.twilioFrom}
-                      onChange={(e) => setConfigInputs({ ...configInputs, twilioFrom: e.target.value })}
-                      className="w-full bg-white dark:bg-slate-950 px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 font-mono text-[10px]"
-                    />
-                  </div>
-
-                  <div className="pt-1">
+                  <div className="pt-1 flex gap-2">
                     <button
                       onClick={handleSaveGatewayConfig}
                       disabled={savingConfig}
-                      className="w-full py-1.5 px-3 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 text-white rounded-lg font-bold text-[10px] flex items-center justify-center gap-1.5 cursor-pointer"
+                      className="flex-1 py-1.5 px-3 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 text-white rounded-lg font-bold text-[10px] flex items-center justify-center gap-1.5 cursor-pointer"
                     >
                       <Key className="w-3 h-3" />
                       <span>{savingConfig ? (isBn ? "সংরক্ষণ হচ্ছে..." : "Saving...") : (isBn ? "ক্রেডেনশিয়াল সেভ করুন" : "Save Credentials")}</span>
+                    </button>
+                    <button
+                      onClick={async () => {
+                        try {
+                          const res = await fetch("/api/alerts/trigger-hourly-now", { method: "POST" });
+                          if (res.ok) {
+                            setConfigFeedback(isBn ? "স্বয়ংক্রিয় এলার্ট সফলভাবে সেন্ট ও আপডেট হয়েছে!" : "Automated cycle dispatched successfully!");
+                            setTimeout(() => setConfigFeedback(null), 4000);
+                          }
+                        } catch (e) {
+                          console.error(e);
+                        }
+                      }}
+                      className="py-1.5 px-3 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-bold text-[10px] flex items-center justify-center gap-1.5 cursor-pointer"
+                      title="Trigger automated dispatch loop now"
+                    >
+                      <span>{isBn ? "এখনই এলার্ট পাঠান ⚡" : "Dispatch Now ⚡"}</span>
                     </button>
                   </div>
 

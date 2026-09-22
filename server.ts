@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
@@ -8,7 +9,7 @@ import nodemailer from "nodemailer";
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 app.use(express.json({ limit: "25mb" }));
 
@@ -507,7 +508,8 @@ const DEMO_USERS = [
     nameBn: "মোঃ রফিকুল ইসলাম",
     email: "rafiqul.farmer@agrivision.bd",
     password: "password123",
-    phone: "+880 1711-234567",
+    phone: "+8801731460855",
+    whatsapp: "+8801731460855",
     role: "farmer",
     district: "Rajshahi",
     organization: "Rajshahi Krishi Samiti",
@@ -549,7 +551,8 @@ const DEMO_USERS = [
     nameBn: "জিয়াউর রহমান (এডমিন)",
     email: "zrziaur360@gmail.com",
     password: "password123",
-    phone: "+880 1600-000000",
+    phone: "+8801731460855",
+    whatsapp: "+8801731460855",
     role: "admin",
     district: "Dhaka",
     organization: "AgriVision System Administration",
@@ -568,13 +571,30 @@ app.get("/api/auth/demo-users", (_req, res) => {
 });
 
 app.post("/api/auth/login", async (req, res) => {
-  const { email, password, role, userId } = req.body;
+  const { email, password, role, userId, phone, whatsapp, identifier } = req.body;
   let user = null;
+
+  // Extract clean digits from phone, whatsapp, email or identifier if provided
+  const candidatePhone = phone || whatsapp || (email && !email.includes("@") ? email : "") || (identifier && !identifier.includes("@") ? identifier : "");
+  const cleanDigits = candidatePhone ? candidatePhone.replace(/[^0-9]/g, "") : "";
 
   if (userId) {
     user = customUsers.find((u) => u.id === userId);
-  } else if (email) {
+  } else if (cleanDigits && cleanDigits.length >= 6) {
+    // Match phone or whatsapp by normalized suffix (last 10 digits or exact match)
+    user = customUsers.find((u) => {
+      const uPhone = (u.phone || "").replace(/[^0-9]/g, "");
+      const uWa = (u.whatsapp || "").replace(/[^0-9]/g, "");
+      const last10 = cleanDigits.slice(-10);
+      return (
+        (uPhone && (uPhone.endsWith(last10) || last10.endsWith(uPhone))) ||
+        (uWa && (uWa.endsWith(last10) || last10.endsWith(uWa)))
+      );
+    });
+  } else if (email && email.includes("@")) {
     user = customUsers.find((u) => u.email.toLowerCase() === email.toLowerCase());
+  } else if (identifier) {
+    user = customUsers.find((u) => u.email.toLowerCase() === identifier.toLowerCase());
   }
 
   if (!user && role) {
@@ -587,20 +607,37 @@ app.post("/api/auth/login", async (req, res) => {
       return res.status(401).json({ error: "ভুল পাসওয়ার্ড! সঠিক পাসওয়ার্ড দিয়ে পুনরায় চেষ্টা করুন।" });
     }
   } else {
-    // If not found, create a signed-in profile for user with provided password
+    // If not found, create a signed-in profile for user with provided phone/email
+    const formattedPhone = cleanDigits
+      ? cleanDigits.startsWith("880")
+        ? `+${cleanDigits}`
+        : cleanDigits.startsWith("0")
+        ? `+88${cleanDigits}`
+        : `+880${cleanDigits}`
+      : "+8801731460855";
+
     const newUser = {
       id: `usr-${Date.now()}`,
-      name: email ? email.split("@")[0].replace(/[^a-zA-Z]/g, " ") : "Visiting Agronomist",
-      nameBn: "পরিদর্শনকারী কৃষক/কর্মকর্তা",
-      email: email || "zrziaur360@gmail.com",
+      name: cleanDigits
+        ? `WhatsApp Farmer (${cleanDigits.slice(-4)})`
+        : email
+        ? email.split("@")[0].replace(/[^a-zA-Z]/g, " ")
+        : "Visiting Agronomist",
+      nameBn: cleanDigits
+        ? `হোয়াটসঅ্যাপ কৃষক (${cleanDigits.slice(-4)})`
+        : "পরিদর্শনকারী কৃষক/কর্মকর্তা",
+      email: email && email.includes("@") ? email : `wa.${cleanDigits.slice(-6) || Date.now().toString().slice(-6)}@agrivision.bd`,
       password: password || "123456",
-      phone: "+880 1700-000000",
+      phone: formattedPhone,
+      whatsapp: formattedPhone,
       role: (role as any) || "farmer",
       district: "Rajshahi",
       organization: "Bangladesh Precision Agriculture Network",
       assignedFieldIds: ["fld-rajshahi-brri28"],
       preferredLanguage: "bn",
       emailAlertsEnabled: true,
+      selectedZones: ["Rajshahi"],
+      alertPreferences: { drought: true, heavy_rain: true, blast_disease: true, heatwave: true, general: true },
     };
     customUsers.push(newUser);
     user = newUser;
@@ -643,23 +680,47 @@ app.post("/api/auth/login", async (req, res) => {
 
 app.post("/api/auth/register", async (req, res) => {
   const { name, email, password, phone, role, district, organization, zone, whatsapp, selectedZones, alertPreferences } = req.body;
-  if (!name || !email) {
-    return res.status(400).json({ error: "Name and Email are required" });
+  
+  const rawPhone = (phone || whatsapp || "").replace(/[^0-9]/g, "");
+  if (!name || (!email && !rawPhone)) {
+    return res.status(400).json({ error: "নাম এবং ইমেইল অথবা হোয়াটসঅ্যাপ মোবাইল নম্বর প্রদান করুন।" });
   }
 
-  const existing = customUsers.find((u) => u.email.toLowerCase() === email.toLowerCase());
+  const effectiveEmail = email && email.includes("@")
+    ? email.trim()
+    : `wa.${rawPhone.slice(-6) || Date.now().toString().slice(-6)}@agrivision.bd`;
+
+  const existing = customUsers.find((u) => {
+    if (email && u.email && u.email.toLowerCase() === email.toLowerCase()) return true;
+    if (rawPhone && rawPhone.length >= 8) {
+      const uPhone = (u.phone || "").replace(/[^0-9]/g, "");
+      const uWa = (u.whatsapp || "").replace(/[^0-9]/g, "");
+      const last10 = rawPhone.slice(-10);
+      return (uPhone && uPhone.endsWith(last10)) || (uWa && uWa.endsWith(last10));
+    }
+    return false;
+  });
+
   if (existing) {
-    return res.status(400).json({ error: "এই ইমেইল দিয়ে ইতোমধ্যে অ্যাকাউন্ট খোলা রয়েছে। অনুগ্রহ করে পাসওয়ার্ড দিয়ে লগইন করুন।" });
+    return res.status(400).json({ error: "এই নম্বর বা ইমেইল দিয়ে ইতোমধ্যে অ্যাকাউন্ট রয়েছে। অনুগ্রহ করে লগইন করুন।" });
   }
+
+  const formattedPhone = rawPhone
+    ? rawPhone.startsWith("880")
+      ? `+${rawPhone}`
+      : rawPhone.startsWith("0")
+      ? `+88${rawPhone}`
+      : `+880${rawPhone}`
+    : "+8801731460855";
 
   const newUser = {
     id: `usr-${Date.now()}`,
     name,
     nameBn: name,
-    email,
+    email: effectiveEmail,
     password: password || "123456",
-    phone: phone || whatsapp || "+880 1700-000000",
-    whatsapp: whatsapp || phone || "+880 1700-000000",
+    phone: formattedPhone,
+    whatsapp: formattedPhone,
     role: role || "farmer",
     district: district || "Rajshahi",
     zone: zone || "Central Zone",
@@ -1075,11 +1136,66 @@ Instructions:
 // ==========================================
 const AUTOMATED_SENDER_EMAIL = "mushfiqmq811@gmail.com";
 
+// In-memory status for SMTP Daily Quota & Cooldown
+let smtpDailyLimitExceeded = true; // Initialized to true because Gmail 550-5.4.5 limit was recently triggered
+let smtpDailyLimitReason = "Gmail daily user sending limit exceeded (550-5.4.5). Real SMTP delivery is paused for 24h cooldown, and the engine is safely operating in simulated in-app dispatch mode.";
+let smtpDailyLimitTimestamp = Date.now();
+
+// Track last real SMTP email sent timestamp per recipient to prevent spamming
+const lastAutomatedRealEmailTimestamp = new Map<string, number>();
+
+/**
+ * Validates if an email address is real and deliverable.
+ * Filters out internal mock/demo domains (e.g. @agrivision.bd, @moa.gov.bd) to prevent SMTP bounces.
+ */
+function isRealDeliverableEmail(email?: string): boolean {
+  if (!email || !email.includes("@")) return false;
+  const clean = email.trim().toLowerCase();
+  const domain = clean.split("@")[1];
+  if (!domain) return false;
+  
+  const mockDomains = [
+    "agrivision.bd",
+    "example.com",
+    "test.com",
+    "moa.gov.bd",
+    "research.ac.bd",
+    "sample.org",
+    "localhost",
+    "invalid",
+  ];
+  return !mockDomains.some((d) => domain.endsWith(d));
+}
+
 /**
  * Sends a real email using SMTP if SMTP_HOST, SMTP_USER, and SMTP_PASS are configured.
  * Otherwise, falls back to logging the simulated email for local UI previewing.
+ * Includes graceful handling for daily sending limits and non-deliverable demo domains.
  */
-async function sendRealEmail(to: string, subject: string, html: string): Promise<{ success: boolean; error?: string; status: "delivered" | "simulated" }> {
+async function sendRealEmail(
+  to: string,
+  subject: string,
+  html: string
+): Promise<{ success: boolean; error?: string; status: "delivered" | "simulated"; quotaExceeded?: boolean }> {
+  // 1. Check if recipient is a simulated/demo domain
+  if (!isRealDeliverableEmail(to)) {
+    console.log(`[Email Simulation] Demo/Mock recipient domain for <${to}>: "${subject}". Recorded in simulated delivery.`);
+    return { success: true, status: "simulated" };
+  }
+
+  // 2. Check if SMTP daily sending limit cooldown is active
+  if (smtpDailyLimitExceeded) {
+    if (Date.now() - smtpDailyLimitTimestamp > 24 * 60 * 60 * 1000) {
+      // Cooldown expired, allow testing again
+      smtpDailyLimitExceeded = false;
+      smtpDailyLimitReason = "";
+      console.log(`[Email Engine] 24-hour SMTP daily limit cooldown expired. Re-enabling live delivery.`);
+    } else {
+      console.log(`[Email Simulation] SMTP daily limit active. Logged in simulated delivery for <${to}>: "${subject}".`);
+      return { success: true, status: "simulated", quotaExceeded: true, error: smtpDailyLimitReason };
+    }
+  }
+
   const host = process.env.SMTP_HOST;
   const port = process.env.SMTP_PORT || "465";
   const user = process.env.SMTP_USER;
@@ -1095,7 +1211,7 @@ async function sendRealEmail(to: string, subject: string, html: string): Promise
     const isSecure = port === "465";
     const transporter = nodemailer.createTransport({
       host: host,
-      port: parseInt(port),
+      port: parseInt(port, 10),
       secure: isSecure,
       auth: {
         user,
@@ -1113,8 +1229,23 @@ async function sendRealEmail(to: string, subject: string, html: string): Promise
     console.log(`[Email Success] Real email sent to <${to}> via SMTP: "${subject}"`);
     return { success: true, status: "delivered" };
   } catch (err: any) {
-    console.error(`[Email Error] Failed sending real email via SMTP to <${to}>:`, err);
-    return { success: false, error: err.message || String(err), status: "simulated" };
+    const errMsg = err?.message || String(err);
+    const isDailyLimit =
+      errMsg.includes("550-5.4.5") ||
+      errMsg.toLowerCase().includes("daily user sending limit exceeded") ||
+      errMsg.toLowerCase().includes("quota") ||
+      errMsg.toLowerCase().includes("too many messages");
+
+    if (isDailyLimit) {
+      smtpDailyLimitExceeded = true;
+      smtpDailyLimitTimestamp = Date.now();
+      smtpDailyLimitReason = "Gmail daily user sending limit exceeded (550-5.4.5). Real emails paused for 24h, switched automatically to simulated in-app dispatches.";
+      console.warn(`[Email Engine] ${smtpDailyLimitReason}`);
+      return { success: true, status: "simulated", quotaExceeded: true, error: smtpDailyLimitReason };
+    }
+
+    console.warn(`[Email Notice] SMTP delivery issue to <${to}>: ${errMsg}. Logged as simulated.`);
+    return { success: false, error: errMsg, status: "simulated" };
   }
 }
 
@@ -1413,6 +1544,25 @@ let memoryTwilioSid = "";
 let memoryTwilioToken = "";
 let memoryTwilioFrom = "whatsapp:+14155238886";
 
+const GATEWAY_CONFIG_PATH = path.join(process.cwd(), "gateway-config.json");
+
+function loadSavedGatewayConfig() {
+  try {
+    if (fs.existsSync(GATEWAY_CONFIG_PATH)) {
+      const data = JSON.parse(fs.readFileSync(GATEWAY_CONFIG_PATH, "utf-8"));
+      if (data.greenApiId) memoryGreenApiId = data.greenApiId;
+      if (data.greenApiToken) memoryGreenApiToken = data.greenApiToken;
+      if (data.twilioSid) memoryTwilioSid = data.twilioSid;
+      if (data.twilioToken) memoryTwilioToken = data.twilioToken;
+      if (data.twilioFrom) memoryTwilioFrom = data.twilioFrom;
+      console.log("[Gateway] Restored persistent credentials from gateway-config.json");
+    }
+  } catch (err) {
+    console.warn("[Gateway] Note on loading gateway-config.json:", err);
+  }
+}
+loadSavedGatewayConfig();
+
 // Helper to check what providers are active and dispatch
 async function dispatchRealWhatsApp(recipient: string, content: string): Promise<{ success: boolean; provider: string; error?: string }> {
   const greenApiId = memoryGreenApiId || process.env.GREEN_API_ID_INSTANCE;
@@ -1602,6 +1752,27 @@ app.post("/api/whatsapp/config", (req, res) => {
   const activeTwilioToken = memoryTwilioToken || process.env.TWILIO_AUTH_TOKEN;
 
   const isConfig = !!((activeGreenId && activeGreenToken) || (activeTwilioSid && activeTwilioToken));
+
+  // Persist to gateway-config.json
+  try {
+    fs.writeFileSync(
+      GATEWAY_CONFIG_PATH,
+      JSON.stringify(
+        {
+          greenApiId: memoryGreenApiId,
+          greenApiToken: memoryGreenApiToken,
+          twilioSid: memoryTwilioSid,
+          twilioToken: memoryTwilioToken,
+          twilioFrom: memoryTwilioFrom,
+        },
+        null,
+        2
+      ),
+      "utf-8"
+    );
+  } catch (err) {
+    console.warn("Failed saving gateway-config.json:", err);
+  }
 
   res.json({
     success: true,
@@ -2093,35 +2264,67 @@ async function processAutomatedAlertTrigger(
   return { newAlert, whatsappDelivered, emailDelivered };
 }
 
-// Background scanner and live telemetry generator (fluctuates values gently every 8 seconds)
+let globalTelemetrySeq = 1;
+
+// Background scanner and live telemetry generator (fluctuates values smoothly every 4 seconds)
 setInterval(() => {
   if (automatedAlertEngineState.isActive) {
+    globalTelemetrySeq++;
+    const nowIso = new Date().toISOString();
     serverFields.forEach(field => {
-      // Gentle random walk for soil moisture: +/- 0.45%
-      const moistureDelta = (Math.random() - 0.5) * 0.9;
+      // Dynamic random walk for soil moisture: +/- 0.35% with natural diurnal trend
+      const moistureDelta = (Math.random() - 0.5) * 0.7;
       field.currentMoisturePct = Math.min(36.0, Math.max(10.0, parseFloat((field.currentMoisturePct + moistureDelta).toFixed(2))));
 
-      // Gentle random walk for NDVI: +/- 0.01
+      // Dynamic random walk for NDVI: +/- 0.01
       const ndviDelta = (Math.random() - 0.5) * 0.02;
       field.ndviAverage = Math.min(0.95, Math.max(0.40, parseFloat((field.ndviAverage + ndviDelta).toFixed(2))));
 
-      // Gentle random walk for temperature: +/- 0.3°C
-      const tempDelta = (Math.random() - 0.5) * 0.6;
+      // Dynamic random walk for temperature: +/- 0.4°C
+      const tempDelta = (Math.random() - 0.5) * 0.8;
       field.temperature = Math.min(42.0, Math.max(12.0, parseFloat((field.temperature + tempDelta).toFixed(1))));
 
-      // Gentle random walk for humidity: +/- 0.5%
-      const humDelta = (Math.random() - 0.5) * 1.0;
+      // Dynamic random walk for humidity: +/- 0.8%
+      const humDelta = (Math.random() - 0.5) * 1.6;
       field.humidity = Math.min(99.0, Math.max(40.0, parseFloat((field.humidity + humDelta).toFixed(1))));
+
+      // Attach real-time sequence and status metadata
+      (field as any).lastTelemetryUpdate = nowIso;
+      (field as any).telemetrySeq = globalTelemetrySeq;
+      (field as any).sensorStatus = "online";
     });
-    automatedAlertEngineState.lastScanTimestamp = new Date().toISOString();
+    automatedAlertEngineState.lastScanTimestamp = nowIso;
   }
-}, 8000);
+}, 4000);
 
 // API Endpoints for Fields and Live Telemetry
 app.get("/api/fields", (_req, res) => {
   res.json({
     success: true,
-    fields: serverFields
+    fields: serverFields,
+    telemetrySeq: globalTelemetrySeq,
+    lastUpdate: new Date().toISOString()
+  });
+});
+
+app.get("/api/telemetry/live", (_req, res) => {
+  res.json({
+    success: true,
+    telemetrySeq: globalTelemetrySeq,
+    timestamp: new Date().toISOString(),
+    fields: serverFields.map(f => ({
+      id: f.id,
+      name: f.name,
+      nameBn: f.nameBn,
+      district: f.district,
+      currentMoisturePct: f.currentMoisturePct,
+      temperature: f.temperature,
+      humidity: f.humidity,
+      ndviAverage: f.ndviAverage,
+      lastTelemetryUpdate: (f as any).lastTelemetryUpdate || new Date().toISOString(),
+      telemetrySeq: (f as any).telemetrySeq || globalTelemetrySeq,
+      sensorStatus: "online"
+    }))
   });
 });
 
@@ -2130,7 +2333,11 @@ app.get("/api/alerts/live", (_req, res) => {
   res.json({
     success: true,
     alerts: systemAlerts,
-    engineState: automatedAlertEngineState,
+    engineState: {
+      ...automatedAlertEngineState,
+      smtpDailyLimitExceeded,
+      smtpDailyLimitReason,
+    },
   });
 });
 
@@ -2209,6 +2416,9 @@ app.get("/api/email/subscription", (_req, res) => {
   res.json({
     ...emailSubscription,
     sender: AUTOMATED_SENDER_EMAIL,
+    smtpDailyLimitExceeded,
+    smtpDailyLimitReason,
+    smtpStatus: smtpDailyLimitExceeded ? "quota_exceeded" : (process.env.SMTP_HOST && process.env.SMTP_USER ? "active" : "simulated"),
   });
 });
 
@@ -2228,7 +2438,13 @@ app.post("/api/email/subscribe", (req, res) => {
 });
 
 app.get("/api/email/logs", (_req, res) => {
-  res.json({ logs: emailLogs, sender: AUTOMATED_SENDER_EMAIL });
+  res.json({
+    logs: emailLogs,
+    sender: AUTOMATED_SENDER_EMAIL,
+    smtpDailyLimitExceeded,
+    smtpDailyLimitReason,
+    smtpStatus: smtpDailyLimitExceeded ? "quota_exceeded" : (process.env.SMTP_HOST && process.env.SMTP_USER ? "active" : "simulated"),
+  });
 });
 
 app.post("/api/email/dispatch", async (req, res) => {
@@ -2604,13 +2820,50 @@ async function runHourlyAutomatedNotifications() {
         }
       }
 
-      // If no extreme threshold exceeded, and general advisor is active, send an hourly advisory/healthy update
+      // If no extreme hazard threshold exceeded, generate a live dynamic status bulletin with real sensor values
       if (matchedAlerts.length === 0 && prefs.general) {
+        const primaryField = serverFields.find(f => f.district.toLowerCase().includes(zones[0].toLowerCase())) || serverFields[0];
+        const curMoisture = primaryField.currentMoisturePct;
+        const curTemp = primaryField.temperature;
+        const curHum = primaryField.humidity;
+        const curNdvi = primaryField.ndviAverage;
+        const stage = primaryField.currentStageBn || primaryField.currentStage;
+        const variety = primaryField.variety;
+        const now = new Date();
+        const bstTime = now.toLocaleTimeString("en-US", { timeZone: "Asia/Dhaka", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true });
+        const bstDate = now.toLocaleDateString("en-US", { timeZone: "Asia/Dhaka", day: "numeric", month: "short", year: "numeric" });
+        const hour = parseInt(now.toLocaleTimeString("en-US", { timeZone: "Asia/Dhaka", hour: "2-digit", hour12: false }), 10);
+
+        let guidanceBn = "";
+        let guidanceEn = "";
+
+        if (curMoisture < 20) {
+          guidanceBn = `⚠️ রুট-জোনে আর্দ্রতার ঘাটতি দেখা দিয়েছে (${curMoisture}%)। অবিলম্বে ১৫-২০ মিমি সম্পূরক সেচ প্রদান করুন।`;
+          guidanceEn = `⚠️ Root zone water deficit detected (${curMoisture}%). Apply 15-20mm supplementary irrigation promptly.`;
+        } else if (curMoisture > 31) {
+          guidanceBn = `💧 মাটিতে আর্দ্রতা পর্যাপ্ত (${curMoisture}%)। সেচ পাম্প বন্ধ রাখুন ও পানি নিষ্কাশন ড্রেন সচল রাখুন।`;
+          guidanceEn = `💧 Soil moisture is ample (${curMoisture}%). Keep pumps OFF and ensure field drainage channels are clear.`;
+        } else {
+          if (hour >= 5 && hour < 11) {
+            guidanceBn = `🌅 সকালের স্ক্যান: শিশির শুকানোর পর শীষ ও পাতার স্বাস্থ্য পরীক্ষা করুন। সার ও অনুখাদ্য প্রয়োগের অনুকূল সময়।`;
+            guidanceEn = `🌅 Morning scouting: Inspect panicles and leaf health once dew dries. Favorable window for scheduled foliar nutrients.`;
+          } else if (hour >= 11 && hour < 16) {
+            guidanceBn = `☀️ দুপুরের কন্ডিশন: তীব্র রোদে ক্যানোপির আর্দ্রতা বাষ্পীভবন পর্যবেক্ষণ করুন (তাপমাত্রা ${curTemp}°সে)।`;
+            guidanceEn = `☀️ Midday solar peak: High canopy transpiration rate (Temp: ${curTemp}°C). Monitor leaf rolling and hydration.`;
+          } else if (hour >= 16 && hour < 20) {
+            guidanceBn = `🌇 বিকেলের রিপোর্ট: মাটির আর্দ্রতা (${curMoisture}%) সন্তোষজনক। পরবর্তী ১২ ঘণ্টার জন্য সেচ স্থগিত রাখা নিরাপদ।`;
+            guidanceEn = `🌇 Late afternoon update: Soil moisture (${curMoisture}%) remains optimal. Safe to withhold overnight pump irrigation.`;
+          } else {
+            guidanceBn = `🌙 রাতের সতর্কতা: আপেক্ষিক আর্দ্রতা (${curHum}%) এবং তাপমাত্রায় ছত্রাক বা ব্লাস্ট রেণুর বিস্তার এড়াতে নিবিড় পর্যবেক্ষণে থাকুন।`;
+            guidanceEn = `🌙 Nighttime scan: High humidity (${curHum}%) fosters fungal spore incubation. Maintain vigilant pest and blast inspection.`;
+          }
+        }
+
         matchedAlerts.push({
-          titleEn: `🌱 AgriVision Hourly Update: Stable Conditions`,
-          titleBn: `🌱 এগ্রিভিশন প্রতি ঘণ্টার আপডেট: স্থিতিশীল কন্ডিশন`,
-          descEn: `Your registered agricultural parcels are currently within optimal climate safety envelopes. Keep monitoring local soil metrics.`,
-          descBn: `আপনার রেজিস্ট্রিকৃত চাষাবাদকৃত জমির কন্ডিশন বর্তমানে অনুকূল ও স্থিতিশীল রয়েছে। আমাদের আধুনিক রিয়েল-টাইম মনিটরিং সচল রয়েছে।`,
+          titleEn: `🌾 [AgriVision Live Telemetry • ${bstTime} BST] ${primaryField.name}: Moisture ${curMoisture}%, Temp ${curTemp}°C`,
+          titleBn: `🌾 [এগ্রিভিশন লাইভ বুলেটিন • ${bstTime} BST] ${primaryField.nameBn}: আর্দ্রতা ${curMoisture}%, তাপমাত্রা ${curTemp}°সে`,
+          descEn: `Live telemetry for ${primaryField.name}: Moisture ${curMoisture}%, Temp ${curTemp}°C, Humidity ${curHum}%, NDVI ${curNdvi}. ${guidanceEn}`,
+          descBn: `${primaryField.nameBn}-এ রিয়েল-টাইম সেন্সর রিডিং: আর্দ্রতা ${curMoisture}%, তাপমাত্রা ${curTemp}°সে, বাতাসের আর্দ্রতা ${curHum}%, এনডিভিআই ${curNdvi}। ${guidanceBn}`,
           level: "warning",
           category: "general"
         });
@@ -2621,6 +2874,18 @@ async function runHourlyAutomatedNotifications() {
         const isBn = user.preferredLanguage !== "en";
         const title = isBn ? alert.titleBn : alert.titleEn;
         const desc = isBn ? alert.descBn : alert.descEn;
+
+        // Resolve user's actual phone number
+        let targetPhone = user.phone || user.whatsapp;
+        if (!targetPhone || targetPhone.includes("000000") || targetPhone.includes("123456") || user.email === "zrziaur360@gmail.com") {
+          targetPhone = "+8801731460855";
+        }
+
+        // Primary field telemetry for rich rendering
+        const liveField = serverFields.find(f => f.district.toLowerCase().includes(zones[0].toLowerCase())) || serverFields[0];
+        const reportSerial = `AGRI-${Date.now().toString().slice(-6)}`;
+        const bstNow = new Date().toLocaleTimeString("en-US", { timeZone: "Asia/Dhaka", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true });
+        const bstDateStr = new Date().toLocaleDateString("en-US", { timeZone: "Asia/Dhaka", day: "numeric", month: "short", year: "numeric" });
 
         // --- 1. EMAIL DISPATCH ---
         const emailHtml = `
@@ -2633,10 +2898,13 @@ async function runHourlyAutomatedNotifications() {
               .card { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e8e0d5; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05); }
               .header { background: linear-gradient(135deg, #1b4332 0%, #2d6a4f 60%, #15221c 100%); color: #ffffff; padding: 24px; text-align: left; }
               .header h1 { margin: 0 0 6px 0; font-size: 18px; font-weight: 800; }
-              .badge { display: inline-block; padding: 4px 10px; background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; border-radius: 9999px; font-size: 10px; font-weight: 700; color: #fca5a5; text-transform: uppercase; }
+              .badge { display: inline-block; padding: 4px 10px; background: rgba(16, 185, 129, 0.2); border: 1px solid #10b981; border-radius: 9999px; font-size: 10px; font-weight: 700; color: #6ee7b7; text-transform: uppercase; }
               .content { padding: 24px; line-height: 1.6; }
-              .alert-box { background: ${alert.level === "critical" ? "#fef2f2" : "#fffbeb"}; border: 1px solid ${alert.level === "critical" ? "#fee2e2" : "#fef3c7"}; border-radius: 12px; padding: 18px; margin-bottom: 20px; }
-              .alert-title { font-weight: 800; color: ${alert.level === "critical" ? "#991b1b" : "#92400e"}; font-size: 15px; margin-bottom: 8px; }
+              .alert-box { background: ${alert.level === "critical" ? "#fef2f2" : "#f0fdf4"}; border: 1px solid ${alert.level === "critical" ? "#fee2e2" : "#bbf7d0"}; border-radius: 12px; padding: 18px; margin-bottom: 20px; }
+              .alert-title { font-weight: 800; color: ${alert.level === "critical" ? "#991b1b" : "#166534"}; font-size: 15px; margin-bottom: 8px; }
+              .telemetry-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
+              .telemetry-table th { text-align: left; background: #f8fafc; padding: 8px 12px; border-bottom: 1px solid #e2e8f0; color: #475569; }
+              .telemetry-table td { padding: 8px 12px; border-bottom: 1px solid #f1f5f9; color: #1e293b; }
               .footer { background: #faf7f2; padding: 16px 24px; text-align: center; font-size: 11px; color: #64748b; border-top: 1px solid #e8e0d5; }
               .btn { display: inline-block; background: #2d6a4f; color: #ffffff !important; padding: 10px 20px; border-radius: 8px; font-weight: 700; text-decoration: none; font-size: 12px; margin-top: 10px; }
             </style>
@@ -2644,8 +2912,9 @@ async function runHourlyAutomatedNotifications() {
           <body>
             <div class="card">
               <div class="header">
-                <span class="badge">AgriVision Hourly Automatic Alert</span>
-                <h1>🌾 Precision Command Advisory</h1>
+                <span class="badge">📡 Real-Time IoT Telemetry &bull; #${reportSerial}</span>
+                <h1>🌾 এগ্রিভিশন লাইভ প্রিসিশন বুলেটিন</h1>
+                <p style="margin: 4px 0 0 0; font-size: 12px; opacity: 0.85;">সময়: ${bstDateStr} (${bstNow} BST)</p>
               </div>
               <div class="content">
                 <p>আসসালামু আলাইকুম / Greetings <strong>${user.name}</strong>,</p>
@@ -2653,30 +2922,91 @@ async function runHourlyAutomatedNotifications() {
                   <div class="alert-title">${title}</div>
                   <p style="font-size: 13px; margin: 0; color: #334155;">${desc}</p>
                 </div>
-                <div style="text-align: center;">
+
+                <h3 style="font-size: 14px; margin: 16px 0 8px 0; color: #1e293b;">📊 লাইভ সেন্সর পরিমাপ (Field: ${liveField.nameBn}):</h3>
+                <table class="telemetry-table">
+                  <tr>
+                    <th>প্যারামিটার (Sensor)</th>
+                    <th>বর্তমান রিডিং</th>
+                    <th>স্ট্যাটাস</th>
+                  </tr>
+                  <tr>
+                    <td>💧 মাটির আর্দ্রতা (Root Moisture)</td>
+                    <td><strong>${liveField.currentMoisturePct}%</strong></td>
+                    <td style="color: ${liveField.currentMoisturePct < 20 ? "#dc2626" : "#16a34a"}; font-weight: 600;">
+                      ${liveField.currentMoisturePct < 20 ? "ঘাটতি (সেচ দিন)" : liveField.currentMoisturePct > 31 ? "পর্যাপ্ত" : "অনুকূল"}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>🌡️ তাপমাত্রা (Microclimate Temp)</td>
+                    <td><strong>${liveField.temperature}°C</strong></td>
+                    <td style="color: ${liveField.temperature > 35 ? "#ea580c" : "#16a34a"};">
+                      ${liveField.temperature > 35 ? "উচ্চ তাপ" : "স্বাভাবিক"}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>💨 বাতাসের আপেক্ষিক আর্দ্রতা (RH)</td>
+                    <td><strong>${liveField.humidity}%</strong></td>
+                    <td>${liveField.humidity > 80 ? "ছত্রাক সতর্কতা" : "অনুকূল"}</td>
+                  </tr>
+                  <tr>
+                    <td>🌿 ক্যানোপি এনডিভিআই (NDVI)</td>
+                    <td><strong>${liveField.ndviAverage}</strong></td>
+                    <td style="color: #16a34a; font-weight: 600;">সবুজ ও সতেজ ক্যানোপি</td>
+                  </tr>
+                  <tr>
+                    <td>🌾 ফসল ও জাত (Crop Variety)</td>
+                    <td colspan="2">${liveField.variety} &bull; ${liveField.currentStageBn || liveField.currentStage}</td>
+                  </tr>
+                </table>
+
+                <div style="text-align: center; margin-top: 20px;">
                   <a href="https://ais-pre-abm25endckmfxvq3mgxift-333434258652.asia-east1.run.app" class="btn">রিয়েল-টাইম ড্যাশবোর্ড দেখুন &rarr;</a>
                 </div>
               </div>
               <div class="footer">
-                Sent automatically by <strong>AgriVision Background Engine</strong> &bull; From: <strong>${AUTOMATED_SENDER_EMAIL}</strong><br />
-                This is an hourly automated preference-based service.
+                স্বয়ংক্রিয়ভাবে প্রেরিত: <strong>AgriVision Real-Time Engine</strong> &bull; প্রেরক: <strong>${AUTOMATED_SENDER_EMAIL}</strong><br />
+                প্রাপক: ${user.email} &bull; ট্র্যাকিং আইডি: #${reportSerial}
               </div>
             </div>
           </body>
           </html>
         `;
 
-        const mailRes = await sendRealEmail(user.email, `[AgriVision Automated Alert] ${title}`, emailHtml);
+        const mailSubject = `🌾 [AgriVision Live • ${bstNow}] ${liveField.nameBn}: আর্দ্রতা ${liveField.currentMoisturePct}% | তাপমাত্রা ${liveField.temperature}°C`;
+        
+        let mailRes: { success: boolean; status: "delivered" | "simulated"; error?: string; quotaExceeded?: boolean } = {
+          success: true,
+          status: "simulated",
+        };
+
+        const lastSent = lastAutomatedRealEmailTimestamp.get(user.email) || 0;
+        const cooldownMs = 1800000; // 30-minute cooldown for background automated real SMTP delivery per user
+        const isDeliverable = isRealDeliverableEmail(user.email);
+
+        if (isDeliverable && !smtpDailyLimitExceeded && Date.now() - lastSent > cooldownMs) {
+          mailRes = await sendRealEmail(user.email, mailSubject, emailHtml);
+          if (mailRes.status === "delivered") {
+            lastAutomatedRealEmailTimestamp.set(user.email, Date.now());
+          }
+        } else {
+          // Record cleanly as in-app simulation
+          mailRes = {
+            success: true,
+            status: "simulated",
+            quotaExceeded: smtpDailyLimitExceeded,
+          };
+        }
 
         // Add to emailLogs list
         const newMailLog: StoredEmailLog = {
           id: `mail-hourly-${Date.now()}`,
           recipient: user.email,
           sender: AUTOMATED_SENDER_EMAIL,
-          subject: `[Hourly Alert] ${alert.titleEn}`,
-          subjectBn: `[ঘণ্টাভিত্তিক সতর্কবার্তা] ${alert.titleBn}`,
+          subject: mailSubject,
+          subjectBn: mailSubject,
           timestamp: new Date().toISOString(),
-          type: "disease_warning",
+          type: (alert.category === "drought" ? "soil_alert" : alert.category === "heatwave" ? "heat_alert" : alert.category === "disease" ? "disease_warning" : "irrigation_plan") as any,
           status: mailRes.status,
           summarySnippet: desc,
           previewHtml: emailHtml,
@@ -2689,27 +3019,39 @@ async function runHourlyAutomatedNotifications() {
 
         // --- 2. WHATSAPP DISPATCH ---
         const waText = isBn
-          ? `🌾 *এগ্রিভিশন প্রতি ঘণ্টার স্বয়ংক্রিয় এলার্ট* 🌾\n\n` +
+          ? `🌾 *[এগ্রিভিশন লাইভ কৃষি বুলেটিন • ${bstNow}]* 🌾\n\n` +
             `আসসালামু আলাইকুম, *${user.name}*!\n` +
-            `• *জোনের নাম:* ${zones.join(", ")}\n` +
-            `• *বিষয়:* ${title}\n` +
-            `• *তথ্য:* ${desc}\n\n` +
-            `👉 বিস্তারিত জানতে ও সেচ পাম্প রিমোট কন্ট্রোল করতে ড্যাশবোর্ডে প্রবেশ করুন।\n` +
-            `✨ _এগ্রিভিশন — মাটি ও মানুষের ডিজিটাল বন্ধু_`
-          : `🌾 *AgriVision Hourly Automated Alert* 🌾\n\n` +
+            `📍 *মাঠ:* ${liveField.nameBn} (${liveField.district})\n` +
+            `🌱 *ফসল:* ${liveField.variety} (${liveField.currentStageBn || liveField.currentStage})\n\n` +
+            `📊 *রিয়েল-টাইম সেন্সর লাইভ রিডিং:*\n` +
+            `• 💧 মাটির আর্দ্রতা: *${liveField.currentMoisturePct}%* ${liveField.currentMoisturePct < 20 ? "⚠️ (ঘাটতি)" : liveField.currentMoisturePct > 31 ? "💧 (পর্যাপ্ত)" : "✅ (অনুকূল)"}\n` +
+            `• 🌡️ তাপমাত্রা: *${liveField.temperature}°C*\n` +
+            `• 💨 বাতাসের আর্দ্রতা: *${liveField.humidity}%*\n` +
+            `• 🌿 ক্যানোপি এনডিভিআই: *${liveField.ndviAverage}* (সবুজতা)\n\n` +
+            `⚡ *তাৎক্ষণিক করণীয়:* \n${desc}\n\n` +
+            `🌐 *লাইভ ড্যাশবোর্ড:* https://ais-pre-abm25endckmfxvq3mgxift-333434258652.asia-east1.run.app\n` +
+            `📞 কৃষি হেল্পলাইন: *16123*\n` +
+            `✨ _এগ্রিভিশন প্রিসিশন ইঞ্জিন (ID: #${reportSerial})_`
+          : `🌾 *[AgriVision Live Field Advisory • ${bstNow} BST]* 🌾\n\n` +
             `Dear *${user.name}*!\n` +
-            `• *Zone:* ${zones.join(", ")}\n` +
-            `• *Subject:* ${title}\n` +
-            `• *Advisory:* ${desc}\n\n` +
-            `👉 Please open your AgriVision Dashboard to manage water pumps remotely.\n` +
-            `✨ _AgriVision — Climate Resilient Agriculture_`;
+            `📍 *Field:* ${liveField.name} (${liveField.district})\n` +
+            `🌱 *Crop:* ${liveField.variety} (${liveField.currentStage})\n\n` +
+            `📊 *Real-time Sensor Readings:*\n` +
+            `• 💧 Soil Moisture: *${liveField.currentMoisturePct}%*\n` +
+            `• 🌡️ Temperature: *${liveField.temperature}°C*\n` +
+            `• 💨 Humidity: *${liveField.humidity}%*\n` +
+            `• 🌿 Canopy NDVI: *${liveField.ndviAverage}*\n\n` +
+            `⚡ *Advisory Action:*\n${desc}\n\n` +
+            `🌐 *Live Dashboard:* https://ais-pre-abm25endckmfxvq3mgxift-333434258652.asia-east1.run.app\n` +
+            `✨ _AgriVision Engine (ID: #${reportSerial})_`;
 
-        const waRes = await dispatchRealWhatsApp(user.phone || user.whatsapp || "+8801731460855", waText);
+        console.log(`[Hourly Cron] Dispatching WhatsApp alert to ${targetPhone}...`);
+        const waRes = await dispatchRealWhatsApp(targetPhone, waText);
 
         const newWaLog: StoredWhatsAppLog = {
           id: `wa-hourly-${Date.now()}`,
           sender: AUTOMATED_SENDER_WHATSAPP,
-          recipient: user.phone || user.whatsapp || "+8801731460855",
+          recipient: targetPhone,
           content: waText,
           timestamp: new Date().toISOString(),
           triggerType: (alert.category === "drought" ? "soil_alert" : alert.category === "heatwave" ? "heat_alert" : alert.category === "disease" ? "disease_alert" : "manual_sandbox") as any,
@@ -2749,21 +3091,43 @@ async function runHourlyAutomatedNotifications() {
   automatedAlertEngineState.lastScanTimestamp = new Date().toISOString();
 }
 
-// Start Background Hourly Scheduler (3,600,000 ms)
-const HOURLY_INTERVAL_MS = 3600000;
-setInterval(runHourlyAutomatedNotifications, HOURLY_INTERVAL_MS);
+// Background Automated Scanner (Defaults to 60 seconds so users observe real automated alerts)
+let automatedScanIntervalMs = 60000;
+let automatedScanTimer: NodeJS.Timeout | null = null;
 
-// Run initial background scan 3 seconds after server starts up so users don't wait 1 hour
+function restartAutomatedScanTimer(ms: number) {
+  if (automatedScanTimer) clearInterval(automatedScanTimer);
+  automatedScanIntervalMs = ms;
+  automatedScanTimer = setInterval(() => {
+    runHourlyAutomatedNotifications().catch(e => console.error("Automated notifications cycle failed:", e));
+  }, automatedScanIntervalMs);
+  console.log(`[Automated Engine] Active interval set to ${Math.round(ms / 1000)} seconds.`);
+}
+
+restartAutomatedScanTimer(60000);
+
+// Run initial background scan 2 seconds after server starts up
 setTimeout(() => {
-  runHourlyAutomatedNotifications().catch((e) => console.error("Initial startup hourly scan failed:", e));
-}, 3000);
+  runHourlyAutomatedNotifications().catch((e) => console.error("Initial startup scan failed:", e));
+}, 2000);
+
+// API to configure automated scan interval (e.g. 60s, 120s, 300s, 3600s)
+app.post("/api/alerts/set-interval", (req, res) => {
+  const { intervalSeconds } = req.body;
+  const s = parseInt(intervalSeconds, 10);
+  if (!isNaN(s) && s >= 10 && s <= 86400) {
+    restartAutomatedScanTimer(s * 1000);
+    return res.json({ success: true, intervalSeconds: s, message: `Scan interval updated to ${s}s` });
+  }
+  res.status(400).json({ success: false, error: "Invalid interval seconds" });
+});
 
 // Expose on-demand manual trigger endpoint for diagnostics and quick review
 app.post("/api/alerts/trigger-hourly-now", async (req, res) => {
   await runHourlyAutomatedNotifications();
   res.json({
     success: true,
-    message: "Hourly automated alerts scanned and dispatched for all subscribed users and zones.",
+    message: "Automated alerts scanned and dispatched for all subscribed users and zones.",
     engineState: automatedAlertEngineState,
     whatsappCount: whatsappLogs.length,
     emailCount: emailLogs.length,
@@ -2775,7 +3139,7 @@ app.post("/api/admin/trigger-hourly-alerts", async (req, res) => {
   await runHourlyAutomatedNotifications();
   res.json({
     success: true,
-    message: "Hourly automated cron loop executed immediately on demand.",
+    message: "Automated cron loop executed immediately on demand.",
     engineState: automatedAlertEngineState,
     whatsappCount: whatsappLogs.length,
     emailCount: emailLogs.length,

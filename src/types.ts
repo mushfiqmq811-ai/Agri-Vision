@@ -38,6 +38,12 @@ export interface GeoField {
   currentMoisturePct: number;
   ndviAverage: number;
   irrigationMethod: "flood" | "drip" | "furrow" | "sprinkler";
+  temperature?: number;
+  humidity?: number;
+  rainfallLast24h?: number;
+  lastTelemetryUpdate?: string;
+  telemetrySeq?: number;
+  sensorStatus?: "online" | "syncing";
 }
 
 export interface CropProfile {

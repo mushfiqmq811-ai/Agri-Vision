@@ -52,6 +52,8 @@ export const EmailAutomationModule: React.FC<Props> = ({
   const [previewLog, setPreviewLog] = useState<EmailLog | null>(null);
   const [devicePreviewMode, setDevicePreviewMode] = useState<"desktop" | "mobile">("desktop");
   const [savingSettings, setSavingSettings] = useState(false);
+  const [smtpLimitExceeded, setSmtpLimitExceeded] = useState(false);
+  const [smtpLimitReason, setSmtpLimitReason] = useState("");
 
   // Load existing subscription and logs
   const loadData = async () => {
@@ -63,12 +65,22 @@ export const EmailAutomationModule: React.FC<Props> = ({
 
       if (subRes.ok && subRes.headers.get("content-type")?.includes("application/json")) {
         const subData = await subRes.json();
-        if (subData) setSubscription(subData);
+        if (subData) {
+          setSubscription(subData);
+          if (subData.smtpDailyLimitExceeded) {
+            setSmtpLimitExceeded(true);
+            setSmtpLimitReason(subData.smtpDailyLimitReason || "");
+          }
+        }
       }
       
       if (logsRes.ok && logsRes.headers.get("content-type")?.includes("application/json")) {
         const logsData = await logsRes.json();
         if (logsData?.logs) setLogs(logsData.logs);
+        if (logsData?.smtpDailyLimitExceeded) {
+          setSmtpLimitExceeded(true);
+          setSmtpLimitReason(logsData.smtpDailyLimitReason || "");
+        }
       }
     } catch (err) {
       console.warn("Email system endpoints offline or non-JSON, using local state:", err);
@@ -189,6 +201,29 @@ export const EmailAutomationModule: React.FC<Props> = ({
           <CheckCircle2 className="w-4 h-4 text-emerald-600" />
           <span>{successMessage}</span>
         </motion.div>
+      )}
+
+      {smtpLimitExceeded && (
+        <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <div className="font-bold flex items-center gap-2">
+              <span>
+                {language === "bn"
+                  ? "জিমেইল দৈনিক প্রেরণ সীমা সক্রিয় • স্বয়ংক্রিয় সিমুলেটেড ডিসপ্যাচ চালু"
+                  : "Gmail Daily Sending Quota Protected (550-5.4.5) • In-App Simulated Dispatches Active"}
+              </span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-200 dark:bg-amber-900 text-amber-800 dark:text-amber-200 uppercase tracking-wider">
+                Safe Failover
+              </span>
+            </div>
+            <p className="text-amber-800 dark:text-amber-300/90 leading-relaxed font-bangla">
+              {language === "bn"
+                ? "জিমেইল অ্যাকাউন্টের দৈনিক কোটা সাময়িকভাবে পূর্ণ হওয়ায় সিস্টেমটি স্বয়ংক্রিয়ভাবে ইন-অ্যাপ সিমুলেটেড মোডে চলছে। কোনো ত্রুটি ছাড়াই আপনার সমস্ত রিপোর্ট, আর্দ্রতা বুলেটিন ও স্বাগতম বার্তা নিয়মিত তৈরি এবং প্রিভিউ করা হচ্ছে।"
+                : "Gmail's daily SMTP sending limit was reached. To ensure 100% system stability without throwing unhandled exceptions, the delivery engine automatically shifted to Simulated In-App Dispatches. All real-time telemetry, crop vitals, and emergency notifications continue generating uninterrupted below."}
+            </p>
+          </div>
+        </div>
       )}
 
       {/* Main Grid: Subscription Manager & Dispatches */}

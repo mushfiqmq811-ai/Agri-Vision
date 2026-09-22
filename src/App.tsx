@@ -67,8 +67,8 @@ function AgriVisionCore() {
   const [selectedField, setSelectedField] = useState<GeoField>(BANGLADESH_FIELDS[0]);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const fetchServerFields = async (syncSelected = true) => {
-    setIsRefreshing(true);
+  const fetchServerFields = async (syncSelected = true, isManual = false) => {
+    if (isManual) setIsRefreshing(true);
     try {
       const res = await fetch("/api/fields");
       if (res.ok) {
@@ -86,18 +86,20 @@ function AgriVisionCore() {
     } catch (err) {
       console.warn("Failed to fetch server fields:", err);
     } finally {
-      setTimeout(() => {
-        setIsRefreshing(false);
-      }, 650);
+      if (isManual) {
+        setTimeout(() => {
+          setIsRefreshing(false);
+        }, 500);
+      }
     }
   };
 
-  // Poll for live field data updates every 8 seconds
+  // Poll for live field data updates smoothly every 4 seconds
   useEffect(() => {
-    fetchServerFields(true);
+    fetchServerFields(true, false);
     const interval = setInterval(() => {
-      fetchServerFields(true);
-    }, 8000);
+      fetchServerFields(true, false);
+    }, 4000);
     return () => clearInterval(interval);
   }, []);
 

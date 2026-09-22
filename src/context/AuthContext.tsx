@@ -5,13 +5,13 @@ interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   demoUsers: User[];
-  login: (email?: string, password?: string, role?: UserRole, userId?: string) => Promise<{ success: boolean; message?: string }>;
+  login: (emailOrPhone?: string, password?: string, role?: UserRole, userId?: string, phone?: string) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
   switchRole: (role: UserRole) => Promise<void>;
   updateUserPreferences: (prefs: Partial<User>) => void;
   register: (userData: {
     name: string;
-    email: string;
+    email?: string;
     password?: string;
     phone?: string;
     whatsapp?: string;
@@ -28,7 +28,8 @@ const DEFAULT_DEMO_USERS: User[] = [
     name: "Md. Rafiqul Islam",
     nameBn: "মোঃ রফিকুল ইসলাম",
     email: "rafiqul.farmer@agrivision.bd",
-    phone: "+880 1711-234567",
+    phone: "+8801731460855",
+    whatsapp: "+8801731460855",
     role: "farmer",
     district: "Rajshahi",
     organization: "Rajshahi Krishi Samiti",
@@ -67,7 +68,8 @@ const DEFAULT_DEMO_USERS: User[] = [
     name: "Ziaur Rahman (Admin)",
     nameBn: "জিয়াউর রহমান (এডমিন)",
     email: "zrziaur360@gmail.com",
-    phone: "+880 1600-000000",
+    phone: "+8801731460855",
+    whatsapp: "+8801731460855",
     role: "admin",
     district: "Dhaka",
     organization: "AgriVision System Administration",
@@ -111,12 +113,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
   }, []);
 
-  const login = async (email?: string, password?: string, role?: UserRole, userId?: string): Promise<{ success: boolean; message?: string }> => {
+  const login = async (emailOrPhone?: string, password?: string, role?: UserRole, userId?: string, phone?: string): Promise<{ success: boolean; message?: string }> => {
     try {
+      const isPhoneLike = (emailOrPhone && !emailOrPhone.includes("@") && /[0-9]/.test(emailOrPhone)) || !!phone;
+      const cleanPhone = phone || (isPhoneLike ? emailOrPhone : undefined);
+
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, role, userId }),
+        body: JSON.stringify({
+          email: !isPhoneLike ? emailOrPhone : undefined,
+          phone: cleanPhone,
+          whatsapp: cleanPhone,
+          identifier: emailOrPhone,
+          password,
+          role,
+          userId,
+        }),
       });
       const data = await res.json();
       if (res.ok && data.success && data.user) {
@@ -129,7 +142,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } catch {
       // Local fallback
-      const found = demoUsers.find((u) => (userId ? u.id === userId : role ? u.role === role : u.email === email));
+      const digits = (phone || (emailOrPhone && !emailOrPhone.includes("@") ? emailOrPhone : "")).replace(/[^0-9]/g, "");
+      const found = demoUsers.find((u) => {
+        if (userId) return u.id === userId;
+        if (digits && digits.length >= 6) {
+          const uP = (u.phone || "").replace(/[^0-9]/g, "");
+          const uW = (u.whatsapp || "").replace(/[^0-9]/g, "");
+          return uP.endsWith(digits.slice(-10)) || uW.endsWith(digits.slice(-10));
+        }
+        if (emailOrPhone && u.email.toLowerCase() === emailOrPhone.toLowerCase()) return true;
+        if (role && u.role === role) return true;
+        return false;
+      });
       if (found) {
         setUser(found);
         localStorage.setItem("agrivision_auth_user", JSON.stringify(found));
@@ -173,7 +197,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const register = async (userData: {
     name: string;
-    email: string;
+    email?: string;
     password?: string;
     phone?: string;
     whatsapp?: string;
@@ -199,13 +223,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } catch {
       // Local fallback
+      const rawDigits = (userData.phone || userData.whatsapp || "").replace(/[^0-9]/g, "");
+      const formattedPhone = rawDigits ? (rawDigits.startsWith("880") ? `+${rawDigits}` : `+880${rawDigits}`) : "+8801731460855";
+      const fallbackEmail = userData.email || `wa.${rawDigits.slice(-6) || Date.now().toString().slice(-6)}@agrivision.bd`;
+
       const newUser: User = {
         id: `usr-${Date.now()}`,
         name: userData.name,
         nameBn: userData.name,
-        email: userData.email,
-        phone: userData.phone || userData.whatsapp || "+880 1700-000000",
-        whatsapp: userData.whatsapp || userData.phone || "+880 1700-000000",
+        email: fallbackEmail,
+        phone: formattedPhone,
+        whatsapp: formattedPhone,
         role: userData.role,
         district: userData.district,
         zone: userData.zone || "Central Zone",
