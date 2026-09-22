@@ -1,0 +1,21 @@
+{
+  "name": "AGRI-VISION Precision Agriculture DSS",
+  "short_name": "AGRI-VISION",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F9FAFB",
+  "theme_color": "#15803d",
+  "description": "Smart Precision Agriculture Decision Support System with GIS mapping, SoilGrids, and AI Crop Doctor",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

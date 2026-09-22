@@ -1,0 +1,6 @@
+{
+  "name": "AgriVision",
+  "description": "International-level Smart Precision Agriculture Decision Support System with GIS mapping, live weather, soil intelligence, smart irrigation, and AI crop diagnosis.",
+  "requestFramePermissions": ["geolocation", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

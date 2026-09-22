@@ -1,0 +1,162 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Modern Font Families - Clean, Sharp, High Readability */
+.font-display {
+  font-family: 'Outfit', 'Plus Jakarta Sans', 'Anek Bangla', 'Hind Siliguri', sans-serif;
+}
+
+.font-bangla {
+  font-family: 'Hind Siliguri', 'Anek Bangla', 'Plus Jakarta Sans', sans-serif;
+}
+
+.font-cultural {
+  font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif;
+}
+
+.font-literature {
+  font-family: 'Hind Siliguri', 'Anek Bangla', sans-serif;
+}
+
+/* Modern Clean Slate Theme Variables & Utilities */
+:root {
+  --app-bg: #F8FAFC;
+  --app-card: #FFFFFF;
+  --app-border: #E2E8F0;
+  --app-primary: #10B981;
+}
+
+/* Modern Clean Paper / Card Texture */
+.vintage-manuscript-paper {
+  background-color: #FFFFFF;
+  color: #1E293B;
+  border-color: #E2E8F0;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
+}
+
+.dark .vintage-manuscript-paper {
+  background-color: #0F172A;
+  color: #F8FAFC;
+  border-color: #1E293B;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+}
+
+/* Modern Sleek Badge / Seal */
+.wax-seal {
+  position: relative;
+  background: linear-gradient(135deg, #059669 0%, #10B981 100%);
+  border: 1px solid #34D399;
+  border-radius: 9999px;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #FFFFFF;
+  user-select: none;
+}
+
+/* Modern Clean Borders */
+.etching-border {
+  border: 1px solid #E2E8F0;
+  border-radius: 1rem;
+  padding: 16px;
+}
+.dark .etching-border {
+  border: 1px solid #1E293B;
+  border-radius: 1rem;
+}
+
+.etching-card {
+  border: 1px solid #E2E8F0;
+  border-radius: 1rem;
+  background: #FFFFFF;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+.dark .etching-card {
+  border: 1px solid #1E293B;
+  border-radius: 1rem;
+  background: #0F172A;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+}
+
+/* Smooth theme transition & global typography */
+html, body {
+  transition: background-color 0.2s ease, color 0.2s ease;
+  font-family: 'Plus Jakarta Sans', 'Hind Siliguri', 'Anek Bangla', system-ui, -apple-system, sans-serif;
+  background-color: #F8FAFC;
+  color: #0F172A;
+  letter-spacing: -0.01em;
+}
+
+.dark html, .dark body {
+  background-color: #090D16;
+  color: #F8FAFC;
+}
+
+/* Modern Smooth Animations */
+@keyframes paddySway {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(1.5deg);
+  }
+}
+
+@keyframes riverFloat {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes harvestGlow {
+  0%, 100% {
+    opacity: 0.9;
+    filter: drop-shadow(0 0 6px rgba(16, 185, 129, 0.2));
+  }
+  50% {
+    opacity: 1;
+    filter: drop-shadow(0 0 12px rgba(16, 185, 129, 0.4));
+  }
+}
+
+.animate-paddy-sway {
+  animation: paddySway 4s ease-in-out infinite;
+}
+
+.animate-river-float {
+  animation: riverFloat 4s ease-in-out infinite;
+}
+
+.animate-harvest-glow {
+  animation: harvestGlow 3s ease-in-out infinite;
+}
+
+/* Sleek border accents */
+.kantha-border {
+  border-bottom: 2px solid #10B981;
+}
+
+/* Modern Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.4);
+  border-radius: 9999px;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(51, 65, 85, 0.6);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.7);
+}
+
